@@ -67,13 +67,14 @@ class Value;
 class LocationSize {
   enum : uint64_t {
     BeforeOrAfterPointer = ~uint64_t(0),
-    AfterPointer = BeforeOrAfterPointer - 1,
-    MapEmpty = BeforeOrAfterPointer - 2,
-    MapTombstone = BeforeOrAfterPointer - 3,
+    ScalableBit  = uint64_t(1) << 62,
+    AfterPointer = (BeforeOrAfterPointer - 1) & ~ScalableBit,
+    MapEmpty = (BeforeOrAfterPointer - 2) & ~ScalableBit,
+    MapTombstone = (BeforeOrAfterPointer - 3) & ~ScalableBit,
     ImpreciseBit = uint64_t(1) << 63,
 
     // The maximum value we can represent without falling back to 'unknown'.
-    MaxValue = (MapTombstone - 1) & ~ImpreciseBit,
+    MaxValue = (MapTombstone - 1) & ~(ImpreciseBit | ScalableBit),
   };
 
   uint64_t Value;
@@ -88,6 +89,8 @@ class LocationSize {
                 "AfterPointer is imprecise by definition.");
   static_assert(BeforeOrAfterPointer & ImpreciseBit,
                 "BeforeOrAfterPointer is imprecise by definition.");
+  static_assert(~(MaxValue & ScalableBit),
+                "Max value don't have bit 62 set");
 
 public:
   // FIXME: Migrate all users to construct via either `precise` or `upperBound`,
@@ -98,12 +101,16 @@ public:
   // this assumes the provided value is precise.
   constexpr LocationSize(uint64_t Raw)
       : Value(Raw > MaxValue ? AfterPointer : Raw) {}
+  constexpr LocationSize(uint64_t Raw, bool Scalable)
+      : Value(Raw > MaxValue ? AfterPointer : Raw | (Scalable ? ScalableBit : uint64_t(0)) ) {}
 
-  static LocationSize precise(uint64_t Value) { return LocationSize(Value); }
+  // Make construction of LocationSize that takes in uint64_t to set Scalable
+  // information as false
+  static LocationSize precise(uint64_t Value) {
+    return LocationSize(Value, false /*Scalable*/);
+  }
   static LocationSize precise(TypeSize Value) {
-    if (Value.isScalable())
-      return afterPointer();
-    return precise(Value.getFixedValue());
+    return LocationSize(Value.getKnownMinValue(), Value.isScalable());
   }
 
   static LocationSize upperBound(uint64_t Value) {
@@ -159,7 +166,8 @@ public:
   }
   uint64_t getValue() const {
     assert(hasValue() && "Getting value from an unknown LocationSize!");
-    return Value & ~ImpreciseBit;
+    assert((Value & ~(ImpreciseBit | ScalableBit)) < MaxValue && "Scalable bit of value should be masked");
+    return Value & ~(ImpreciseBit | ScalableBit);
   }
 
   // Returns whether or not this value is precise. Note that if a value is
@@ -167,6 +175,8 @@ public:
   bool isPrecise() const {
     return (Value & ImpreciseBit) == 0;
   }
+
+  bool isScalable() const { return (Value & ScalableBit); }
 
   // Convenience method to check if this LocationSize's value is 0.
   bool isZero() const { return hasValue() && getValue() == 0; }
@@ -291,6 +301,10 @@ public:
   explicit MemoryLocation(const Value *Ptr, LocationSize Size,
                           const AAMDNodes &AATags = AAMDNodes())
       : Ptr(Ptr), Size(Size), AATags(AATags) {}
+
+  explicit MemoryLocation(const Value *Ptr, uint64_t Size,
+                          const AAMDNodes &AATags = AAMDNodes())
+      : Ptr(Ptr), Size(Size, false), AATags(AATags) {}
 
   MemoryLocation getWithNewPtr(const Value *NewPtr) const {
     MemoryLocation Copy(*this);

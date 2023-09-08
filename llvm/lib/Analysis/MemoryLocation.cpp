@@ -27,8 +27,10 @@ void LocationSize::print(raw_ostream &OS) const {
     OS << "mapEmpty";
   else if (*this == mapTombstone())
     OS << "mapTombstone";
-  else if (isPrecise())
+  else if (isPrecise() & !isScalable())
     OS << "precise(" << getValue() << ')';
+  else if (isPrecise() & isScalable())
+    OS << "precise(vscale x " << getValue() << ')';
   else
     OS << "upperBound(" << getValue() << ')';
 }
