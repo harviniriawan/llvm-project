@@ -25,6 +25,14 @@ define void @ss(ptr %p) {
   ret void
 }
 
+; CHECK-LABEL: Alias sets for function 'ss2':
+; CHECK: AliasSet[{{.*}}, 1] must alias, Mod       Pointers: (ptr %p, unknown after)
+define void @ss2(ptr %p) {
+  store <vscale x 2 x i64> zeroinitializer, ptr %p, align 2
+  store <vscale x 2 x i64> zeroinitializer, ptr %p, align 2
+  store <vscale x 4 x i64> zeroinitializer, ptr %p, align 2
+  ret void
+}
 ; CHECK-LABEL: Alias sets for function 'son':
 ; CHECK: AliasSet[{{.*}}, 2] may alias, Mod       Pointers: (ptr %g, LocationSize::precise(vscale x 16)), (ptr %p, LocationSize::precise(8))
 define void @son(ptr %p) {

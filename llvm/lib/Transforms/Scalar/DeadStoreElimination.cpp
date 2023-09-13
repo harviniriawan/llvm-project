@@ -984,6 +984,10 @@ struct DSEState {
     const bool AnyScalable =
         DeadSize.isScalable() || KillingLocSize.isScalable();
 
+    // TODO: Remove AnyScalable constraint once alias analysis fully support
+    // scalable quantities
+    if (AnyScalable)
+      return OW_Unknown;
     // Query the alias information
     AliasResult AAR = BatchAA.alias(KillingLoc, DeadLoc);
 
