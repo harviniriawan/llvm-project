@@ -64,6 +64,8 @@ class Value;
 //
 // If asked to represent a pathologically large value, this will degrade to
 // std::nullopt.
+// Store Scalable information in bit 62 of Value. Scalable information is
+// required to do Alias Analysis on Scalable quantities
 class LocationSize {
   enum : uint64_t {
     BeforeOrAfterPointer = ~uint64_t(0),
@@ -164,10 +166,12 @@ public:
   bool hasValue() const {
     return Value != AfterPointer && Value != BeforeOrAfterPointer;
   }
-  uint64_t getValue() const {
+  bool isScalable() const { return (Value & ScalableBit); }
+
+  TypeSize getValue() const {
     assert(hasValue() && "Getting value from an unknown LocationSize!");
     assert((Value & ~(ImpreciseBit | ScalableBit)) < MaxValue && "Scalable bit of value should be masked");
-    return Value & ~(ImpreciseBit | ScalableBit);
+    return {Value & ~(ImpreciseBit | ScalableBit), isScalable()};
   }
 
   // Returns whether or not this value is precise. Note that if a value is
@@ -176,10 +180,11 @@ public:
     return (Value & ImpreciseBit) == 0;
   }
 
-  bool isScalable() const { return (Value & ScalableBit); }
 
   // Convenience method to check if this LocationSize's value is 0.
-  bool isZero() const { return hasValue() && getValue() == 0; }
+  bool isZero() const {
+    return hasValue() && getValue().getKnownMinValue() == 0;
+  }
 
   /// Whether accesses before the base pointer are possible.
   bool mayBeBeforePointer() const { return Value == BeforeOrAfterPointer; }

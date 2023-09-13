@@ -205,16 +205,16 @@ static bool isShortenableAtTheBeginning(Instruction *I) {
   return isa<AnyMemSetInst>(I);
 }
 
-static uint64_t getPointerSize(const Value *V, const DataLayout &DL,
-                               const TargetLibraryInfo &TLI,
-                               const Function *F) {
+static LocationSize getPointerSize(const Value *V, const DataLayout &DL,
+                                   const TargetLibraryInfo &TLI,
+                                   const Function *F) {
   uint64_t Size;
   ObjectSizeOpts Opts;
   Opts.NullIsUnknownSize = NullPointerIsDefined(F);
 
   if (getObjectSize(V, Size, DL, &TLI, Opts))
-    return Size;
-  return MemoryLocation::UnknownSize;
+    return LocationSize(Size, DL.getTypeAllocSize(V->getType()).isScalable());
+  return LocationSize(MemoryLocation::UnknownSize);
 }
 
 namespace {
@@ -959,9 +959,10 @@ struct DSEState {
     // Check whether the killing store overwrites the whole object, in which
     // case the size/offset of the dead store does not matter.
     if (DeadUndObj == KillingUndObj && KillingLocSize.isPrecise()) {
-      uint64_t KillingUndObjSize = getPointerSize(KillingUndObj, DL, TLI, &F);
-      if (KillingUndObjSize != MemoryLocation::UnknownSize &&
-          KillingUndObjSize == KillingLocSize.getValue())
+      LocationSize KillingUndObjSize =
+          getPointerSize(KillingUndObj, DL, TLI, &F);
+      if (KillingUndObjSize.hasValue() &&
+          KillingUndObjSize.getValue() == KillingLocSize.getValue())
         return OW_Complete;
     }
 
@@ -984,9 +985,15 @@ struct DSEState {
       return isMaskedStoreOverwrite(KillingI, DeadI, BatchAA);
     }
 
-    const uint64_t KillingSize = KillingLocSize.getValue();
-    const uint64_t DeadSize = DeadLoc.Size.getValue();
+    const TypeSize KillingSize = KillingLocSize.getValue();
+    const TypeSize DeadSize = DeadLoc.Size.getValue();
+    const bool AnyScalable =
+        DeadSize.isScalable() || KillingLocSize.isScalable();
 
+    // TODO: Remove AnyScalable constraint once alias analysis fully support
+    // scalable quantities
+    if (AnyScalable)
+      return OW_Unknown;
     // Query the alias information
     AliasResult AAR = BatchAA.alias(KillingLoc, DeadLoc);
 
