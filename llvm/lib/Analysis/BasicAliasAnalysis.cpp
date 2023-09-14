@@ -101,6 +101,7 @@ bool BasicAAResult::invalidate(Function &Fn, const PreservedAnalyses &PA,
 //===----------------------------------------------------------------------===//
 
 /// Returns the size of the object specified by V or UnknownSize if unknown.
+/// getObjectSize does not support scalable Value
 static LocationSize getObjectSize(const Value *V, const DataLayout &DL,
                               const TargetLibraryInfo &TLI,
                               bool NullIsValidLoc,
@@ -110,7 +111,7 @@ static LocationSize getObjectSize(const Value *V, const DataLayout &DL,
   Opts.RoundToAlign = RoundToAlign;
   Opts.NullIsUnknownSize = NullIsValidLoc;
   if (getObjectSize(V, Size, DL, &TLI, Opts))
-    return LocationSize(Size, DL.getTypeAllocSize(V->getType()).isScalable());
+    return LocationSize(Size);
   return LocationSize(MemoryLocation::UnknownSize);
 }
 
@@ -154,11 +155,9 @@ static bool isObjectSmallerThan(const Value *V, LocationSize Size,
   LocationSize ObjectSize = getObjectSize(V, DL, TLI, NullIsValidLoc,
                                       /*RoundToAlign*/ true);
 
-  // Bail on comparing V and Size if their scalability differs
-  if (ObjectSize.isScalable() != Size.isScalable())
-    return false;
-
-  return ObjectSize != MemoryLocation::UnknownSize && ObjectSize.getValue() < Size.getValue();
+  // Bail on comparing V and Size if Size is scalable
+  return ObjectSize != MemoryLocation::UnknownSize && !Size.isScalable() &&
+         ObjectSize.getValue() < Size.getValue();
 }
 
 /// Return the minimal extent from \p V to the end of the underlying object,

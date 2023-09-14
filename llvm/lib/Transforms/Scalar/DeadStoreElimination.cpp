@@ -213,7 +213,7 @@ static LocationSize getPointerSize(const Value *V, const DataLayout &DL,
   Opts.NullIsUnknownSize = NullPointerIsDefined(F);
 
   if (getObjectSize(V, Size, DL, &TLI, Opts))
-    return LocationSize(Size, DL.getTypeAllocSize(V->getType()).isScalable());
+    return LocationSize(Size);
   return LocationSize(MemoryLocation::UnknownSize);
 }
 
@@ -987,26 +987,24 @@ struct DSEState {
 
     const TypeSize KillingSize = KillingLocSize.getValue();
     const TypeSize DeadSize = DeadLoc.Size.getValue();
+    // Bail on doing Size comparison which depends on AA for now
+    // TODO: Remove AnyScalable once Alias Analysis deal with scalable vectors
     const bool AnyScalable =
         DeadSize.isScalable() || KillingLocSize.isScalable();
 
-    // TODO: Remove AnyScalable constraint once alias analysis fully support
-    // scalable quantities
-    if (AnyScalable)
-      return OW_Unknown;
     // Query the alias information
     AliasResult AAR = BatchAA.alias(KillingLoc, DeadLoc);
 
     // If the start pointers are the same, we just have to compare sizes to see if
     // the killing store was larger than the dead store.
-    if (AAR == AliasResult::MustAlias) {
+    if (AAR == AliasResult::MustAlias && !AnyScalable) {
       // Make sure that the KillingSize size is >= the DeadSize size.
       if (KillingSize >= DeadSize)
         return OW_Complete;
     }
 
     // If we hit a partial alias we may have a full overwrite
-    if (AAR == AliasResult::PartialAlias && AAR.hasOffset()) {
+    if (AAR == AliasResult::PartialAlias && AAR.hasOffset() & !AnyScalable) {
       int32_t Off = AAR.getOffset();
       if (Off >= 0 && (uint64_t)Off + DeadSize <= KillingSize)
         return OW_Complete;
@@ -1053,6 +1051,9 @@ struct DSEState {
     //    |<->|---killing---|<----->|
     //
     // We have to be careful here as *Off is signed while *.Size is unsigned.
+
+    if (AnyScalable)
+      return OW_Unknown;
 
     // Check if the dead access starts "not before" the killing one.
     if (DeadOff >= KillingOff) {

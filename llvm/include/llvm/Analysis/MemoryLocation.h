@@ -180,7 +180,6 @@ public:
     return (Value & ImpreciseBit) == 0;
   }
 
-
   // Convenience method to check if this LocationSize's value is 0.
   bool isZero() const {
     return hasValue() && getValue().getKnownMinValue() == 0;
@@ -306,10 +305,6 @@ public:
   explicit MemoryLocation(const Value *Ptr, LocationSize Size,
                           const AAMDNodes &AATags = AAMDNodes())
       : Ptr(Ptr), Size(Size), AATags(AATags) {}
-
-  explicit MemoryLocation(const Value *Ptr, uint64_t Size,
-                          const AAMDNodes &AATags = AAMDNodes())
-      : Ptr(Ptr), Size(Size, false), AATags(AATags) {}
 
   MemoryLocation getWithNewPtr(const Value *NewPtr) const {
     MemoryLocation Copy(*this);

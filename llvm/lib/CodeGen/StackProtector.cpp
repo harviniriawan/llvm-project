@@ -178,9 +178,8 @@ static bool HasAddressTaken(const Instruction *AI, TypeSize AllocSize,
     // the bounds of the allocated object.
     // TODO: TypeSize::getFixed should be modified to adapt to scalable vectors
     std::optional<MemoryLocation> MemLoc = MemoryLocation::getOrNone(I);
-    if (MemLoc && MemLoc->Size.hasValue() && !MemLoc->Size.isScalable() &&
-        !TypeSize::isKnownGE(AllocSize,
-                             TypeSize::getFixed(MemLoc->Size.getValue())))
+    if (MemLoc && MemLoc->Size.hasValue() &&
+        !TypeSize::isKnownGE(AllocSize, MemLoc->Size.getValue()))
       return true;
     switch (I->getOpcode()) {
     case Instruction::Store:
