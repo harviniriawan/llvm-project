@@ -1058,15 +1058,19 @@ AliasResult BasicAAResult::aliasGEP(
 
   // If an inbounds GEP would have to start from an out of bounds address
   // for the two to alias, then we can assume noalias.
+  // TODO: Remove !isScalable() once BasicAA fully support scalable location
+  // size
   if (*DecompGEP1.InBounds && DecompGEP1.VarIndices.empty() &&
-      V2Size.hasValue() && DecompGEP1.Offset.sge(V2Size.getValue()) &&
+      V2Size.hasValue() && !V2Size.isScalable() &&
+      DecompGEP1.Offset.sge(V2Size.getValue()) &&
       isBaseOfObject(DecompGEP2.Base))
     return AliasResult::NoAlias;
 
   if (isa<GEPOperator>(V2)) {
     // Symmetric case to above.
     if (*DecompGEP2.InBounds && DecompGEP1.VarIndices.empty() &&
-        V1Size.hasValue() && DecompGEP1.Offset.sle(-V1Size.getValue()) &&
+        V1Size.hasValue() && !V1Size.isScalable() &&
+        DecompGEP1.Offset.sle(-V1Size.getValue()) &&
         isBaseOfObject(DecompGEP1.Base))
       return AliasResult::NoAlias;
   }
