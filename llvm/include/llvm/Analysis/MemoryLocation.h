@@ -159,6 +159,8 @@ public:
       return beforeOrAfterPointer();
     if (Value == AfterPointer || Other.Value == AfterPointer)
       return afterPointer();
+    if (isScalable() != Other.isScalable())
+      return afterPointer();
 
     return upperBound(std::max(getValue(), Other.getValue()));
   }
