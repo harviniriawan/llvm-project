@@ -103,9 +103,9 @@ bool BasicAAResult::invalidate(Function &Fn, const PreservedAnalyses &PA,
 /// Returns the size of the object specified by V or UnknownSize if unknown.
 /// getObjectSize does not support scalable Value
 static LocationSize getObjectSize(const Value *V, const DataLayout &DL,
-                              const TargetLibraryInfo &TLI,
-                              bool NullIsValidLoc,
-                              bool RoundToAlign = false) {
+                                  const TargetLibraryInfo &TLI,
+                                  bool NullIsValidLoc,
+                                  bool RoundToAlign = false) {
   uint64_t Size;
   ObjectSizeOpts Opts;
   Opts.RoundToAlign = RoundToAlign;
@@ -153,7 +153,7 @@ static bool isObjectSmallerThan(const Value *V, LocationSize Size,
   // This function needs to use the aligned object size because we allow
   // reads a bit past the end given sufficient alignment.
   LocationSize ObjectSize = getObjectSize(V, DL, TLI, NullIsValidLoc,
-                                      /*RoundToAlign*/ true);
+                                          /*RoundToAlign*/ true);
 
   // Bail on comparing V and Size if Size is scalable
   return ObjectSize != MemoryLocation::UnknownSize && !Size.isScalable() &&
@@ -164,9 +164,9 @@ static bool isObjectSmallerThan(const Value *V, LocationSize Size,
 /// assuming the result is used in an aliasing query. E.g., we do use the query
 /// location size and the fact that null pointers cannot alias here.
 static LocationSize getMinimalExtentFrom(const Value &V,
-                                     const LocationSize &LocSize,
-                                     const DataLayout &DL,
-                                     bool NullIsValidLoc) {
+                                         const LocationSize &LocSize,
+                                         const DataLayout &DL,
+                                         bool NullIsValidLoc) {
   // If we have dereferenceability information we know a lower bound for the
   // extent as accesses for a lower offset would be valid. We need to exclude
   // the "or null" part if null is a valid pointer. We can ignore frees, as an
@@ -186,7 +186,8 @@ static LocationSize getMinimalExtentFrom(const Value &V,
 static bool isObjectSize(const Value *V, TypeSize Size, const DataLayout &DL,
                          const TargetLibraryInfo &TLI, bool NullIsValidLoc) {
   LocationSize ObjectSize = getObjectSize(V, DL, TLI, NullIsValidLoc);
-  return ObjectSize != MemoryLocation::UnknownSize && ObjectSize.getValue() == Size;
+  return ObjectSize != MemoryLocation::UnknownSize &&
+         ObjectSize.getValue() == Size;
 }
 
 //===----------------------------------------------------------------------===//

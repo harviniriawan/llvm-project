@@ -69,7 +69,7 @@ class Value;
 class LocationSize {
   enum : uint64_t {
     BeforeOrAfterPointer = ~uint64_t(0),
-    ScalableBit  = uint64_t(1) << 62,
+    ScalableBit = uint64_t(1) << 62,
     AfterPointer = (BeforeOrAfterPointer - 1) & ~ScalableBit,
     MapEmpty = (BeforeOrAfterPointer - 2) & ~ScalableBit,
     MapTombstone = (BeforeOrAfterPointer - 3) & ~ScalableBit,
@@ -91,8 +91,7 @@ class LocationSize {
                 "AfterPointer is imprecise by definition.");
   static_assert(BeforeOrAfterPointer & ImpreciseBit,
                 "BeforeOrAfterPointer is imprecise by definition.");
-  static_assert(~(MaxValue & ScalableBit),
-                "Max value don't have bit 62 set");
+  static_assert(~(MaxValue & ScalableBit), "Max value don't have bit 62 set");
 
 public:
   // FIXME: Migrate all users to construct via either `precise` or `upperBound`,
@@ -104,7 +103,8 @@ public:
   constexpr LocationSize(uint64_t Raw)
       : Value(Raw > MaxValue ? AfterPointer : Raw) {}
   constexpr LocationSize(uint64_t Raw, bool Scalable)
-      : Value(Raw > MaxValue ? AfterPointer : Raw | (Scalable ? ScalableBit : uint64_t(0)) ) {}
+      : Value(Raw > MaxValue ? AfterPointer
+                             : Raw | (Scalable ? ScalableBit : uint64_t(0))) {}
 
   // Make construction of LocationSize that takes in uint64_t to set Scalable
   // information as false
@@ -172,7 +172,8 @@ public:
 
   TypeSize getValue() const {
     assert(hasValue() && "Getting value from an unknown LocationSize!");
-    assert((Value & ~(ImpreciseBit | ScalableBit)) < MaxValue && "Scalable bit of value should be masked");
+    assert((Value & ~(ImpreciseBit | ScalableBit)) < MaxValue &&
+           "Scalable bit of value should be masked");
     return {Value & ~(ImpreciseBit | ScalableBit), isScalable()};
   }
 
