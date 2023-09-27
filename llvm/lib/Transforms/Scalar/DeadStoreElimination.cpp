@@ -949,7 +949,8 @@ struct DSEState {
 
     // Check whether the killing store overwrites the whole object, in which
     // case the size/offset of the dead store does not matter.
-    if (DeadUndObj == KillingUndObj && KillingLocSize.isPrecise()) {
+    if (DeadUndObj == KillingUndObj && KillingLocSize.isPrecise() &&
+        isIdentifiedObject(KillingUndObj)) {
       LocationSize KillingUndObjSize =
           getPointerSize(KillingUndObj, DL, TLI, &F);
       if (KillingUndObjSize.hasValue() &&
