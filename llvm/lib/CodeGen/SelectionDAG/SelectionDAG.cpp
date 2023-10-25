@@ -8497,7 +8497,7 @@ SDValue SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,
   if (PtrInfo.V.isNull())
     PtrInfo = InferPointerInfo(PtrInfo, *this, Ptr, Offset);
 
-  uint64_t Size = MemoryLocation::getSizeOrUnknown(MemVT.getStoreSize());
+  TypeSize Size = MemVT.getStoreSize();
   MachineFunction &MF = getMachineFunction();
   MachineMemOperand *MMO = MF.getMachineMemOperand(PtrInfo, MMOFlags, Size,
                                                    Alignment, AAInfo, Ranges);
@@ -8618,8 +8618,7 @@ SDValue SelectionDAG::getStore(SDValue Chain, const SDLoc &dl, SDValue Val,
     PtrInfo = InferPointerInfo(PtrInfo, *this, Ptr);
 
   MachineFunction &MF = getMachineFunction();
-  uint64_t Size =
-      MemoryLocation::getSizeOrUnknown(Val.getValueType().getStoreSize());
+  TypeSize Size = Val.getValueType().getStoreSize();
   MachineMemOperand *MMO =
       MF.getMachineMemOperand(PtrInfo, MMOFlags, Size, Alignment, AAInfo);
   return getStore(Chain, dl, Val, Ptr, MMO);
@@ -8672,7 +8671,7 @@ SDValue SelectionDAG::getTruncStore(SDValue Chain, const SDLoc &dl, SDValue Val,
 
   MachineFunction &MF = getMachineFunction();
   MachineMemOperand *MMO = MF.getMachineMemOperand(
-      PtrInfo, MMOFlags, MemoryLocation::getSizeOrUnknown(SVT.getStoreSize()),
+      PtrInfo, MMOFlags, SVT.getStoreSize(),
       Alignment, AAInfo);
   return getTruncStore(Chain, dl, Val, Ptr, SVT, MMO);
 }
@@ -8767,7 +8766,7 @@ SDValue SelectionDAG::getLoadVP(
   if (PtrInfo.V.isNull())
     PtrInfo = InferPointerInfo(PtrInfo, *this, Ptr, Offset);
 
-  uint64_t Size = MemoryLocation::getSizeOrUnknown(MemVT.getStoreSize());
+  TypeSize Size = MemVT.getStoreSize();
   MachineFunction &MF = getMachineFunction();
   MachineMemOperand *MMO = MF.getMachineMemOperand(PtrInfo, MMOFlags, Size,
                                                    Alignment, AAInfo, Ranges);
@@ -8920,7 +8919,7 @@ SDValue SelectionDAG::getTruncStoreVP(SDValue Chain, const SDLoc &dl,
 
   MachineFunction &MF = getMachineFunction();
   MachineMemOperand *MMO = MF.getMachineMemOperand(
-      PtrInfo, MMOFlags, MemoryLocation::getSizeOrUnknown(SVT.getStoreSize()),
+      PtrInfo, MMOFlags, SVT.getStoreSize(),
       Alignment, AAInfo);
   return getTruncStoreVP(Chain, dl, Val, Ptr, Mask, EVL, SVT, MMO,
                          IsCompressing);
@@ -11746,8 +11745,8 @@ MemSDNode::MemSDNode(unsigned Opc, unsigned Order, const DebugLoc &dl,
   // We check here that the size of the memory operand fits within the size of
   // the MMO. This is because the MMO might indicate only a possible address
   // range instead of specifying the affected memory addresses precisely.
-  // TODO: Make MachineMemOperands aware of scalable vectors.
-  assert(memvt.getStoreSize().getKnownMinValue() <= MMO->getSize() &&
+  if (MMO->getType().isValid())
+    assert(TypeSize::isKnownLE(memvt.getStoreSize(), MMO->getSize()) &&
          "Size mismatch!");
 }
 

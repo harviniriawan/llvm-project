@@ -190,6 +190,12 @@ public:
                     SyncScope::ID SSID = SyncScope::System,
                     AtomicOrdering Ordering = AtomicOrdering::NotAtomic,
                     AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic);
+  MachineMemOperand(MachinePointerInfo PtrInfo, Flags flags, TypeSize ts,
+                    Align a, const AAMDNodes &AAInfo = AAMDNodes(),
+                    const MDNode *Ranges = nullptr,
+                    SyncScope::ID SSID = SyncScope::System,
+                    AtomicOrdering Ordering = AtomicOrdering::NotAtomic,
+                    AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic);
   MachineMemOperand(MachinePointerInfo PtrInfo, Flags flags, LLT type, Align a,
                     const AAMDNodes &AAInfo = AAMDNodes(),
                     const MDNode *Ranges = nullptr,
@@ -233,13 +239,13 @@ public:
   LLT getMemoryType() const { return MemoryType; }
 
   /// Return the size in bytes of the memory reference.
-  uint64_t getSize() const {
-    return MemoryType.isValid() ? MemoryType.getSizeInBytes() : ~UINT64_C(0);
+  TypeSize getSize() const {
+    return MemoryType.isValid() ? MemoryType.getSizeInBytes() : TypeSize::Fixed(~UINT64_C(0));
   }
 
   /// Return the size in bits of the memory reference.
-  uint64_t getSizeInBits() const {
-    return MemoryType.isValid() ? MemoryType.getSizeInBits() : ~UINT64_C(0);
+  TypeSize getSizeInBits() const {
+    return MemoryType.isValid() ? MemoryType.getSizeInBits() : TypeSize::Fixed(~UINT64_C(0));
   }
 
   LLT getType() const {

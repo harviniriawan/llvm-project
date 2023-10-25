@@ -291,8 +291,8 @@ public:
     return MemoryLocation(Ptr, LocationSize::beforeOrAfterPointer(), AATags);
   }
 
-  // Return the exact size if the exact size is known at compiletime,
-  // otherwise return MemoryLocation::UnknownSize.
+  // TODO: Remove getSizeOrUnknown
+  // interface once llvm/unittests/CodeGen/SelectionDAGAddressAnalysisTest is updated
   static uint64_t getSizeOrUnknown(const TypeSize &T) {
     return T.isScalable() ? UnknownSize : T.getFixedValue();
   }
@@ -302,6 +302,10 @@ public:
   explicit MemoryLocation(const Value *Ptr, LocationSize Size,
                           const AAMDNodes &AATags = AAMDNodes())
       : Ptr(Ptr), Size(Size), AATags(AATags) {}
+
+  explicit MemoryLocation(const Value *Ptr, TypeSize Size,
+                          const AAMDNodes &AATags = AAMDNodes())
+      : Ptr(Ptr), Size(LocationSize::precise(Size)), AATags(AATags) {}
 
   MemoryLocation getWithNewPtr(const Value *NewPtr) const {
     MemoryLocation Copy(*this);

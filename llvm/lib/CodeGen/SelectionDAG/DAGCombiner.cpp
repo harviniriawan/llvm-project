@@ -24167,7 +24167,7 @@ static SDValue narrowExtractedVectorLoad(SDNode *Extract, SelectionDAG &DAG) {
   // TODO: Use "BaseIndexOffset" to make this more effective.
   SDValue NewAddr = DAG.getMemBasePlusOffset(Ld->getBasePtr(), Offset, DL);
 
-  uint64_t StoreSize = MemoryLocation::getSizeOrUnknown(VT.getStoreSize());
+  TypeSize StoreSize = VT.getStoreSize();
   MachineFunction &MF = DAG.getMachineFunction();
   MachineMemOperand *MMO;
   if (Offset.isScalable()) {
@@ -27786,7 +27786,7 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
     bool IsAtomic;
     SDValue BasePtr;
     int64_t Offset;
-    std::optional<int64_t> NumBytes;
+    std::optional<TypeSize> NumBytes;
     MachineMemOperand *MMO;
   };
 
@@ -27799,13 +27799,12 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
                      : (LSN->getAddressingMode() == ISD::PRE_DEC)
                            ? -1 * C->getSExtValue()
                            : 0;
-      uint64_t Size =
-          MemoryLocation::getSizeOrUnknown(LSN->getMemoryVT().getStoreSize());
+      TypeSize Size = LSN->getMemoryVT().getStoreSize();
       return {LSN->isVolatile(),
               LSN->isAtomic(),
               LSN->getBasePtr(),
               Offset /*base offset*/,
-              std::optional<int64_t>(Size),
+              std::optional<TypeSize>(Size),
               LSN->getMemOperand()};
     }
     if (const auto *LN = cast<LifetimeSDNode>(N))
@@ -27813,13 +27812,13 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
               /*isAtomic*/ false,
               LN->getOperand(1),
               (LN->hasOffset()) ? LN->getOffset() : 0,
-              (LN->hasOffset()) ? std::optional<int64_t>(LN->getSize())
-                                : std::optional<int64_t>(),
+              (LN->hasOffset()) ? std::optional<TypeSize>(TypeSize::getFixed(LN->getSize()))
+                                : std::optional<TypeSize>(),
               (MachineMemOperand *)nullptr};
     // Default.
     return {false /*isvolatile*/,
             /*isAtomic*/ false,          SDValue(),
-            (int64_t)0 /*offset*/,       std::optional<int64_t>() /*size*/,
+            (int64_t)0 /*offset*/,       std::optional<TypeSize>() /*size*/,
             (MachineMemOperand *)nullptr};
   };
 
@@ -27846,10 +27845,15 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
       return false;
   }
 
+  // if NumBytes is scalable and offset is not 0, conservatively return may alias
+  if ((MUC0.NumBytes && MUC0.NumBytes.value().isScalable() && (MUC0.Offset != 0)) ||
+      (MUC1.NumBytes && MUC1.NumBytes.value().isScalable() && (MUC1.Offset != 0)))
+    return true;
   // Try to prove that there is aliasing, or that there is no aliasing. Either
   // way, we can return now. If nothing can be proved, proceed with more tests.
+  const bool BothNotScalable = !(MUC0.NumBytes.value().isScalable() || MUC1.NumBytes.value().isScalable());
   bool IsAlias;
-  if (BaseIndexOffset::computeAliasing(Op0, MUC0.NumBytes, Op1, MUC1.NumBytes,
+  if (BothNotScalable && BaseIndexOffset::computeAliasing(Op0, MUC0.NumBytes, Op1, MUC1.NumBytes,
                                        DAG, IsAlias))
     return IsAlias;
 
@@ -27876,17 +27880,20 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
   Align OrigAlignment1 = MUC1.MMO->getBaseAlign();
   auto &Size0 = MUC0.NumBytes;
   auto &Size1 = MUC1.NumBytes;
-  if (OrigAlignment0 == OrigAlignment1 && SrcValOffset0 != SrcValOffset1 &&
-      Size0.has_value() && Size1.has_value() && *Size0 == *Size1 &&
-      OrigAlignment0 > *Size0 && SrcValOffset0 % *Size0 == 0 &&
-      SrcValOffset1 % *Size1 == 0) {
-    int64_t OffAlign0 = SrcValOffset0 % OrigAlignment0.value();
-    int64_t OffAlign1 = SrcValOffset1 % OrigAlignment1.value();
 
-    // There is no overlap between these relatively aligned accesses of
-    // similar size. Return no alias.
-    if ((OffAlign0 + *Size0) <= OffAlign1 || (OffAlign1 + *Size1) <= OffAlign0)
-      return false;
+  if (BothNotScalable) {
+    if (OrigAlignment0 == OrigAlignment1 && SrcValOffset0 != SrcValOffset1 &&
+        Size0.has_value() && Size1.has_value() && *Size0 == *Size1 &&
+        OrigAlignment0 > *Size0 && SrcValOffset0 % *Size0 == 0 &&
+        SrcValOffset1 % *Size1 == 0) {
+      int64_t OffAlign0 = SrcValOffset0 % OrigAlignment0.value();
+      int64_t OffAlign1 = SrcValOffset1 % OrigAlignment1.value();
+
+      // There is no overlap between these relatively aligned accesses of
+      // similar size. Return no alias.
+      if ((OffAlign0 + *Size0) <= OffAlign1 || (OffAlign1 + *Size1) <= OffAlign0)
+        return false;
+    }
   }
 
   bool UseAA = CombinerGlobalAA.getNumOccurrences() > 0
@@ -27902,12 +27909,14 @@ bool DAGCombiner::mayAlias(SDNode *Op0, SDNode *Op1) const {
       Size1) {
     // Use alias analysis information.
     int64_t MinOffset = std::min(SrcValOffset0, SrcValOffset1);
-    int64_t Overlap0 = *Size0 + SrcValOffset0 - MinOffset;
-    int64_t Overlap1 = *Size1 + SrcValOffset1 - MinOffset;
+    int64_t Overlap0 = Size0.value().getKnownMinValue() + SrcValOffset0 - MinOffset;
+    int64_t Overlap1 = Size1.value().getKnownMinValue() + SrcValOffset1 - MinOffset;
+    LocationSize Loc0 = Size0.value().isScalable() ? LocationSize::precise(Size0.value()) : LocationSize::precise(Overlap0);
+    LocationSize Loc1 = Size1.value().isScalable() ? LocationSize::precise(Size1.value()) : LocationSize::precise(Overlap1);
     if (AA->isNoAlias(
-            MemoryLocation(MUC0.MMO->getValue(), Overlap0,
+            MemoryLocation(MUC0.MMO->getValue(), Loc0,
                            UseTBAA ? MUC0.MMO->getAAInfo() : AAMDNodes()),
-            MemoryLocation(MUC1.MMO->getValue(), Overlap1,
+            MemoryLocation(MUC1.MMO->getValue(), Loc1,
                            UseTBAA ? MUC1.MMO->getAAInfo() : AAMDNodes())))
       return false;
   }

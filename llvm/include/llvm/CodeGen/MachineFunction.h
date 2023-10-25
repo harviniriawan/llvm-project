@@ -1022,6 +1022,13 @@ public:
       AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic);
 
   MachineMemOperand *getMachineMemOperand(
+      MachinePointerInfo PtrInfo, MachineMemOperand::Flags f, TypeSize ts,
+      Align base_alignment, const AAMDNodes &AAInfo = AAMDNodes(),
+      const MDNode *Ranges = nullptr, SyncScope::ID SSID = SyncScope::System,
+      AtomicOrdering Ordering = AtomicOrdering::NotAtomic,
+      AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic);
+
+  MachineMemOperand *getMachineMemOperand(
       MachinePointerInfo PtrInfo, MachineMemOperand::Flags f, LLT MemTy,
       Align base_alignment, const AAMDNodes &AAInfo = AAMDNodes(),
       const MDNode *Ranges = nullptr, SyncScope::ID SSID = SyncScope::System,
@@ -1040,6 +1047,14 @@ public:
         MMO, Offset, Size == ~UINT64_C(0) ? LLT() : LLT::scalar(8 * Size));
   }
 
+  MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
+                                          int64_t Offset, TypeSize ts) {
+    return getMachineMemOperand(
+        MMO, Offset, ts.getKnownMinValue() == ~UINT64_C(0) ? LLT()  :
+                     ts.isScalable() ? LLT::scalable_vector(1, 8 * ts.getKnownMinValue())
+                     : LLT::scalar(8 * ts.getKnownMinValue()));
+  }
+
   /// getMachineMemOperand - Allocate a new MachineMemOperand by copying
   /// an existing one, replacing only the MachinePointerInfo and size.
   /// MachineMemOperands are owned by the MachineFunction and need not be
@@ -1047,6 +1062,9 @@ public:
   MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
                                           const MachinePointerInfo &PtrInfo,
                                           uint64_t Size);
+  MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
+                                          const MachinePointerInfo &PtrInfo,
+                                          TypeSize ts);
   MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
                                           const MachinePointerInfo &PtrInfo,
                                           LLT Ty);

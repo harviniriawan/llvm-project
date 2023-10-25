@@ -196,7 +196,7 @@ bool GISelAddressing::instMayAlias(const MachineInstr &MI,
     bool IsAtomic;
     Register BasePtr;
     int64_t Offset;
-    uint64_t NumBytes;
+    TypeSize NumBytes;
     MachineMemOperand *MMO;
   };
 
@@ -212,8 +212,7 @@ bool GISelAddressing::instMayAlias(const MachineInstr &MI,
         Offset = 0;
       }
 
-      uint64_t Size = MemoryLocation::getSizeOrUnknown(
-          LS->getMMO().getMemoryType().getSizeInBytes());
+      TypeSize Size = LS->getMMO().getMemoryType().getSizeInBytes();
       return {LS->isVolatile(),       LS->isAtomic(),          BaseReg,
               Offset /*base offset*/, Size, &LS->getMMO()};
     }
@@ -221,7 +220,7 @@ bool GISelAddressing::instMayAlias(const MachineInstr &MI,
     // Default.
     return {false /*isvolatile*/,
             /*isAtomic*/ false,          Register(),
-            (int64_t)0 /*offset*/,       0 /*size*/,
+            (int64_t)0 /*offset*/,       TypeSize::getFixed(0) /*size*/,
             (MachineMemOperand *)nullptr};
   };
   MemUseCharacteristics MUC0 = getCharacteristics(&MI),
@@ -249,10 +248,17 @@ bool GISelAddressing::instMayAlias(const MachineInstr &MI,
       return false;
   }
 
+  // if NumBytes is scalable and offset is not 0, conservatively return may alias
+  if ((MUC0.NumBytes.isScalable() && (MUC0.Offset != 0)) ||
+      (MUC1.NumBytes.isScalable() && (MUC1.Offset != 0)))
+    return true;
+
+  const bool BothNotScalable = !(MUC0.NumBytes.isScalable() || MUC1.NumBytes.isScalable());
+
   // Try to prove that there is aliasing, or that there is no aliasing. Either
   // way, we can return now. If nothing can be proved, proceed with more tests.
   bool IsAlias;
-  if (GISelAddressing::aliasIsKnownForLoadStore(MI, Other, IsAlias, MRI))
+  if (BothNotScalable && GISelAddressing::aliasIsKnownForLoadStore(MI, Other, IsAlias, MRI))
     return IsAlias;
 
   // The following all rely on MMO0 and MMO1 being valid.
@@ -262,18 +268,21 @@ bool GISelAddressing::instMayAlias(const MachineInstr &MI,
   // FIXME: port the alignment based alias analysis from SDAG's isAlias().
   int64_t SrcValOffset0 = MUC0.MMO->getOffset();
   int64_t SrcValOffset1 = MUC1.MMO->getOffset();
-  uint64_t Size0 = MUC0.NumBytes;
-  uint64_t Size1 = MUC1.NumBytes;
+  TypeSize Size0 = MUC0.NumBytes;
+  TypeSize Size1 = MUC1.NumBytes;
   if (AA && MUC0.MMO->getValue() && MUC1.MMO->getValue() &&
       Size0 != MemoryLocation::UnknownSize &&
       Size1 != MemoryLocation::UnknownSize) {
     // Use alias analysis information.
     int64_t MinOffset = std::min(SrcValOffset0, SrcValOffset1);
-    int64_t Overlap0 = Size0 + SrcValOffset0 - MinOffset;
-    int64_t Overlap1 = Size1 + SrcValOffset1 - MinOffset;
-    if (AA->isNoAlias(MemoryLocation(MUC0.MMO->getValue(), Overlap0,
+    int64_t Overlap0 = Size0.getKnownMinValue() + SrcValOffset0 - MinOffset;
+    int64_t Overlap1 = Size1.getKnownMinValue() + SrcValOffset1 - MinOffset;
+    LocationSize Loc0 = Size0.isScalable() ? LocationSize::precise(Size0) : LocationSize::precise(Overlap0);
+    LocationSize Loc1 = Size1.isScalable() ? LocationSize::precise(Size1) : LocationSize::precise(Overlap1);
+
+    if (AA->isNoAlias(MemoryLocation(MUC0.MMO->getValue(), Loc0,
                                      MUC0.MMO->getAAInfo()),
-                      MemoryLocation(MUC1.MMO->getValue(), Overlap1,
+                      MemoryLocation(MUC1.MMO->getValue(), Loc1,
                                      MUC1.MMO->getAAInfo())))
       return false;
   }

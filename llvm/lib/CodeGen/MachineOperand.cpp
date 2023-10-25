@@ -1097,14 +1097,25 @@ MachineMemOperand::MachineMemOperand(MachinePointerInfo ptrinfo, Flags f,
                         s == ~UINT64_C(0) ? LLT() : LLT::scalar(8 * s), a,
                         AAInfo, Ranges, SSID, Ordering, FailureOrdering) {}
 
+MachineMemOperand::MachineMemOperand(MachinePointerInfo ptrinfo, Flags f,
+                                     TypeSize ts, Align a,
+                                     const AAMDNodes &AAInfo,
+                                     const MDNode *Ranges, SyncScope::ID SSID,
+                                     AtomicOrdering Ordering,
+                                     AtomicOrdering FailureOrdering)
+    : MachineMemOperand(ptrinfo, f,
+                        ts.getKnownMinValue() == ~UINT64_C(0) ? LLT()  :
+                                              ts.isScalable() ? LLT::scalable_vector(1, 8 * ts.getKnownMinValue())
+                                                              : LLT::scalar(8 * ts.getKnownMinValue()), a,
+                        AAInfo, Ranges, SSID, Ordering, FailureOrdering) {}
+
 void MachineMemOperand::refineAlignment(const MachineMemOperand *MMO) {
   // The Value and Offset may differ due to CSE. But the flags and size
   // should be the same.
   assert(MMO->getFlags() == getFlags() && "Flags mismatch!");
-  assert((MMO->getSize() == ~UINT64_C(0) || getSize() == ~UINT64_C(0) ||
+  assert((MMO->getSize().getKnownMinValue() == ~UINT64_C(0) || getSize().getKnownMinValue() == ~UINT64_C(0) ||
           MMO->getSize() == getSize()) &&
          "Size mismatch!");
-
   if (MMO->getBaseAlign() >= getBaseAlign()) {
     // Update the alignment value.
     BaseAlign = MMO->getBaseAlign();
@@ -1226,7 +1237,9 @@ void MachineMemOperand::print(raw_ostream &OS, ModuleSlotTracker &MST,
        << "unknown-address";
   }
   MachineOperand::printOperandOffset(OS, getOffset());
-  if (getSize() > 0 && getAlign() != getSize())
+  if (getSize().isScalable())
+    OS << ", vscale ";
+  if (getSize().getKnownMinValue() > 0 && getAlign() != getSize().getKnownMinValue())
     OS << ", align " << getAlign().value();
   if (getAlign() != getBaseAlign())
     OS << ", basealign " << getBaseAlign().value();
